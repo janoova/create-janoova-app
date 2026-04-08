@@ -1,0 +1,14 @@
+{
+  "name": "create-janoova-app",
+  "version": "1.0.0",
+  "description": "Scaffold a new site from the janoova-ui template",
+  "bin": {
+    "create-janoova-app": "./bin/create-janoova-app.mjs"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["janoova", "create-app", "scaffold"],
+  "license": "MIT"
+}
