@@ -103,8 +103,7 @@ log.dim('Press Enter to skip — you can fill these in .env.local later.\n');
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
 const sanityProjectId  = await prompt(rl, 'Sanity Project ID');
-const sanityToken      = await prompt(rl, 'Sanity Read Token (preview)');
-const sanityWriteToken = await prompt(rl, 'Sanity Write Token (forms)');
+const sanityToken      = await prompt(rl, 'Sanity Editor Token');
 const resendApiKey     = await prompt(rl, 'Resend API Key (emails)');
 const baseUrl          = await prompt(rl, 'Base URL', 'https://your-site.vercel.app');
 
@@ -117,7 +116,6 @@ log.step('3/4  Writing .env.local');
 const envLines = [
   `NEXT_PUBLIC_SANITY_PROJECT_ID = ${sanityProjectId}`,
   `SANITY_TOKEN = ${sanityToken}`,
-  `SANITY_WRITE_TOKEN = ${sanityWriteToken}`,
   `NEXT_PUBLIC_SANITY_HOOK = revalidatewebhook`,
   `NEXT_PUBLIC_BASE_URL = ${baseUrl}`,
   ``,
