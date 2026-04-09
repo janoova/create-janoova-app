@@ -8,10 +8,12 @@
  *   npx github:janoova/create-janoova-app my-new-site
  */
 
-import { existsSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, writeFileSync, readFileSync, createWriteStream, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { createInterface } from 'readline';
 import { spawnSync } from 'child_process';
+import { get as httpsGet } from 'https';
+import { tmpdir } from 'os';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -42,6 +44,32 @@ function prompt(rl, question, defaultValue = '') {
     rl.question(`  ${c.cyan}?${c.reset} ${question}${hint}: `, (answer) => {
       resolve(answer.trim() || defaultValue);
     });
+  });
+}
+
+// ─── download helper (follows redirects) ─────────────────────────────────────
+
+const SEED_URL = 'https://github.com/janoova/janoova-ui/releases/latest/download/master-template.tar.gz';
+
+function download(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const file = createWriteStream(destPath);
+    const fetch = (u) => {
+      httpsGet(u, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          fetch(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode} — no seed dataset release found`));
+          return;
+        }
+        res.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+        file.on('error', reject);
+      }).on('error', reject);
+    };
+    fetch(url);
   });
 }
 
@@ -102,6 +130,7 @@ log.dim('Press Enter to skip — you can fill these in .env.local later.\n');
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
+const organizationName = await prompt(rl, 'Organization Name');
 const sanityProjectId  = await prompt(rl, 'Sanity Project ID');
 const sanityToken      = await prompt(rl, 'Sanity Editor Token');
 const resendApiKey     = await prompt(rl, 'Resend API Key (emails)');
@@ -114,6 +143,7 @@ rl.close();
 log.step('3/4  Writing .env.local');
 
 const envLines = [
+  `NEXT_PUBLIC_ORGANIZATION_NAME = "${organizationName}"`,
   `NEXT_PUBLIC_SANITY_PROJECT_ID = ${sanityProjectId}`,
   `SANITY_TOKEN = ${sanityToken}`,
   `NEXT_PUBLIC_SANITY_HOOK = revalidatewebhook`,
@@ -164,34 +194,43 @@ console.log('');
 const rl2 = createInterface({ input: process.stdin, output: process.stdout });
 
 const importDataset = await new Promise((resolve) => {
-  rl2.question(`  ${c.cyan}?${c.reset} Import Sanity dataset now? ${c.dim}(y/N)${c.reset}: `, (ans) => {
+  rl2.question(`  ${c.cyan}?${c.reset} Seed Sanity dataset from janoova-ui template? ${c.dim}(y/N)${c.reset}: `, (ans) => {
     resolve(ans.trim().toLowerCase() === 'y');
   });
 });
 rl2.close();
 
 if (importDataset) {
-  log.step('Importing Sanity dataset');
+  log.step('Seeding Sanity dataset');
 
-  const tarPath = join(process.cwd(), 'master-template.tar.gz');
-  if (!existsSync(tarPath)) {
-    log.warn('master-template.tar.gz not found in current directory.');
-    log.dim('Export it from janoova-ui first:');
-    log.dim('  npx sanity dataset export production master-template.tar.gz');
-    log.dim('Then run from your new project:');
+  const tarPath = join(tmpdir(), 'janoova-master-template.tar.gz');
+
+  log.info('Downloading seed dataset from GitHub...');
+  try {
+    await download(SEED_URL, tarPath);
+    log.success('Seed dataset downloaded');
+  } catch (err) {
+    log.error(`Download failed: ${err.message}`);
+    log.dim('Make sure a release with master-template.tar.gz exists at:');
+    log.dim('  https://github.com/janoova/janoova-ui/releases');
+    log.dim('Or run the import manually later:');
     log.dim('  NODE_OPTIONS="--max-old-space-size=4096" npx sanity dataset import master-template.tar.gz production --replace');
+    process.exit(0);
+  }
+
+  log.info('Importing into Sanity...\n');
+  const importResult = spawnSync(
+    'node',
+    ['--max-old-space-size=4096', 'node_modules/.bin/sanity', 'dataset', 'import', tarPath, 'production', '--replace'],
+    { cwd: targetDir, stdio: 'inherit', shell: false }
+  );
+
+  try { unlinkSync(tarPath); } catch {}
+
+  if (importResult.status === 0) {
+    log.success('Dataset seeded');
   } else {
-    log.info('Found master-template.tar.gz — importing...\n');
-    const importResult = spawnSync(
-      'node',
-      ['--max-old-space-size=4096', 'node_modules/.bin/sanity', 'dataset', 'import', tarPath, 'production', '--replace'],
-      { cwd: targetDir, stdio: 'inherit', shell: false }
-    );
-    if (importResult.status === 0) {
-      log.success('Dataset imported');
-    } else {
-      log.warn('Dataset import failed — you can run it manually later.');
-    }
+    log.warn('Import failed — you can run it manually later.');
   }
 }
 
@@ -218,7 +257,7 @@ ${c.bold}  Manual steps remaining:${c.reset}
   [ ] Update list-item checkmark in CSS
 
   ${c.yellow}Integrations${c.reset}
-  [ ] Update general contact form (Formspark)
+  [ ] Update general contact form email notification
   [ ] Update CTA data for blog posts
 
   ${c.yellow}Deployment (Vercel)${c.reset}
