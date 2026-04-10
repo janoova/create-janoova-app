@@ -104,7 +104,7 @@ Then open [http://localhost:3000/studio](http://localhost:3000/studio) and sign 
 If you skipped the dataset seed during setup or need to re-run it:
 
 ```bash
-NODE_OPTIONS="--max-old-space-size=4096" npx sanity dataset import master-template.tar.gz production --replace
+npm run seed:import
 ```
 
 ---
