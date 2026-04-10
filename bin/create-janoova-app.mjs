@@ -8,8 +8,8 @@
  *   npx github:janoova/create-janoova-app my-new-site
  */
 
-import { existsSync, writeFileSync, readFileSync, createWriteStream, unlinkSync } from 'fs';
-import { resolve, join } from 'path';
+import { existsSync, writeFileSync, readFileSync, createWriteStream, unlinkSync, readdirSync, cpSync, rmSync } from 'fs';
+import { resolve, join, relative, sep } from 'path';
 import { createInterface } from 'readline';
 import { spawnSync } from 'child_process';
 import { get as httpsGet } from 'https';
@@ -73,9 +73,98 @@ function download(url, destPath) {
   });
 }
 
-// ─── main ─────────────────────────────────────────────────────────────────────
+// ─── update ───────────────────────────────────────────────────────────────────
 
 const TEMPLATE_REPO = 'https://github.com/janoova/janoova-ui.git';
+
+if (process.argv[2] === 'update') {
+  const targetDir = process.argv[3]
+    ? resolve(process.cwd(), process.argv[3])
+    : process.cwd();
+
+  console.log(`\n${c.bold}${c.magenta}  create-janoova-app update${c.reset}\n`);
+
+  if (!existsSync(join(targetDir, 'workspace'))) {
+    log.error(`No workspace/ folder found at "${targetDir}" — is this a janoova-ui project?`);
+    process.exit(1);
+  }
+
+  // Save the project's package name before overwriting
+  const pkgPath = join(targetDir, 'package.json');
+  const currentPkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  const savedName = currentPkg.name;
+
+  // Clone latest framework to a temp dir
+  const tmpDir = join(tmpdir(), `janoova-update-${Date.now()}`);
+
+  log.step('1/3  Fetching latest janoova-ui');
+  log.dim(`From: ${TEMPLATE_REPO}\n`);
+
+  const clone = spawnSync('git', ['clone', '--depth=1', TEMPLATE_REPO, tmpDir], { stdio: 'inherit' });
+  if (clone.status !== 0) {
+    log.error('Clone failed. Check your internet connection and GitHub access.');
+    process.exit(1);
+  }
+  log.success('Latest framework cloned');
+
+  // Items to never overwrite from the template
+  const PRESERVE_ROOT = new Set(['workspace', '.git', 'node_modules', '.env.local', '.env']);
+
+  // Favicon-like files sitting directly in public/ (not in subdirs)
+  const isFaviconFile = (srcBase, srcPath) => {
+    const rel = relative(srcBase, srcPath);
+    const parts = rel.split(sep);
+    if (parts.length !== 1) return false;
+    return /^favicon/i.test(parts[0]) || parts[0] === 'apple-touch-icon.png';
+  };
+
+  log.step('2/3  Updating framework files');
+
+  for (const entry of readdirSync(tmpDir)) {
+    if (entry === '.git') continue;          // never copy template git history
+    if (PRESERVE_ROOT.has(entry)) continue;  // skip site-specific items
+
+    const src  = join(tmpDir, entry);
+    const dest = join(targetDir, entry);
+
+    if (entry === 'public') {
+      // Copy public/ but leave any existing favicon* / apple-touch-icon files alone
+      cpSync(src, dest, {
+        recursive: true,
+        force: true,
+        filter: (srcPath) => !isFaviconFile(src, srcPath),
+      });
+    } else {
+      cpSync(src, dest, { recursive: true, force: true });
+    }
+  }
+
+  // Restore project name and drop the template's bin entry
+  const newPkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  newPkg.name = savedName;
+  delete newPkg.bin;
+  writeFileSync(pkgPath, JSON.stringify(newPkg, null, 2) + '\n');
+
+  // Remove temp clone
+  rmSync(tmpDir, { recursive: true, force: true });
+  log.success('Framework files updated');
+
+  // Reinstall deps to pick up any package.json changes
+  log.step('3/3  Updating dependencies');
+  log.dim('Running npm install...\n');
+
+  const install = spawnSync('npm', ['install'], { cwd: targetDir, stdio: 'inherit', shell: true });
+  if (install.status !== 0) {
+    log.warn('npm install had issues — check the output above.');
+  } else {
+    log.success('Dependencies updated');
+  }
+
+  console.log(`\n${c.bold}${c.green}  Done! "${savedName}" is up to date.${c.reset}\n`);
+  process.exit(0);
+}
+
+// ─── main ─────────────────────────────────────────────────────────────────────
 
 const projectName = process.argv[2];
 
