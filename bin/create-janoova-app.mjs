@@ -115,7 +115,7 @@ if (process.argv[2] === 'update') {
     const rel = relative(srcBase, srcPath);
     const parts = rel.split(sep);
     if (parts.length !== 1) return false;
-    return /^favicon/i.test(parts[0]) || parts[0] === 'apple-touch-icon.png';
+    return /^favicon/i.test(parts[0]) || /^icon\./i.test(parts[0]) || parts[0] === 'apple-touch-icon.png';
   };
 
   log.step('2/3  Updating framework files');
