@@ -110,12 +110,18 @@ if (process.argv[2] === 'update') {
   // Items to never overwrite from the template
   const PRESERVE_ROOT = new Set(['workspace', '.git', 'node_modules', '.env.local', '.env']);
 
-  // Favicon-like files sitting directly in public/ (not in subdirs)
-  const isFaviconFile = (srcBase, srcPath) => {
+  // Icon/favicon files that sit directly inside a given directory (not in subdirs)
+  const isIconFile = (srcBase, srcPath) => {
     const rel = relative(srcBase, srcPath);
     const parts = rel.split(sep);
     if (parts.length !== 1) return false;
-    return /^favicon/i.test(parts[0]) || /^icon\./i.test(parts[0]) || parts[0] === 'apple-touch-icon.png';
+    const name = parts[0];
+    return (
+      /^favicon/i.test(name) ||
+      /^icon\./i.test(name)  ||
+      /^apple-icon\./i.test(name) ||
+      name === 'apple-touch-icon.png'
+    );
   };
 
   log.step('2/3  Updating framework files');
@@ -127,12 +133,12 @@ if (process.argv[2] === 'update') {
     const src  = join(tmpDir, entry);
     const dest = join(targetDir, entry);
 
-    if (entry === 'public') {
-      // Copy public/ but leave any existing favicon* / apple-touch-icon files alone
+    if (entry === 'public' || entry === 'app') {
+      // Copy but leave any existing icon/favicon files at the root of these dirs alone
       cpSync(src, dest, {
         recursive: true,
         force: true,
-        filter: (srcPath) => !isFaviconFile(src, srcPath),
+        filter: (srcPath) => !isIconFile(src, srcPath),
       });
     } else {
       cpSync(src, dest, { recursive: true, force: true });
